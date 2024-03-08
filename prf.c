@@ -20,7 +20,7 @@
 #define BLOCK_LEN 64 /**< Block length for SHA512 */
 static mpz_t rcount; /**< GMP multiple precision integer to keep track of how many blocks have been generated */
 static unsigned char rkey[BLOCK_LEN]; /**< Key for the PRF, an array of length BLOCK_LEN of unsigned char (bytes) */
-static int prf_initialized; /**< Flag to check if the PRF has been initialized. Static variables in C are initialized to 0 by default. */
+static int prf_initialized; /**< Flag to check if the PRF has been initialized. Static variables in C default to 0. */
 #define VERY_YES 9191919 /**< A constant used to indicate that the PRF has been initialized */
 
 
