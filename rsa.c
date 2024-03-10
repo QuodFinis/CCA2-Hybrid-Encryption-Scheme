@@ -14,6 +14,7 @@
  */
 
 
+
 #define ISPRIME(x) mpz_probab_prime_p(x,10)
 /** takes a multiple precision integer and returns 2 if it is definitely prime, 1 if it is probably prime, 0 if it is
  * definitely composite. */
@@ -29,7 +30,6 @@
 
 
 /* utility functions to read/write mpz_t with streams: */
-
 /**
  * @brief Writes a multiple precision integer to a file.
  *
@@ -209,14 +209,14 @@ size_t rsa_numBytesN(RSA_KEY *K) {
 /**
  * @brief Initializes an RSA key.
  *
+ * @param K Pointer to the RSA_KEY to initialize.
+ *
  * Initializes an RSA key by setting all members to 0. RSA key consists of five fields:
  * - p: One of the two prime numbers used to generate keys.
  * - q: Other prime number used to generate keys.
  * - n: Modulus for both the public and private keys, product of p and q.
  * - e: Public exponent used in encryption process.
  * - d: Private exponent used in decryption process.
-
- * @param K Pointer to the RSA_KEY to initialize.
  *
  * @return This function returns 0 on success.
  */

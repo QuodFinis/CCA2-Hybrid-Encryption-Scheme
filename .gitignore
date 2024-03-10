@@ -1,3 +1,5 @@
 kem-enc
 .tags
 output
+.gitignore
+readme.html
