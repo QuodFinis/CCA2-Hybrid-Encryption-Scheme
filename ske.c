@@ -96,11 +96,8 @@ int ske_keyGen(SKE_KEY *K, unsigned char *entropy, size_t entLen) {
  */
 size_t ske_encrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len, SKE_KEY *K, unsigned char *IV) {
     if (!IV) { // if IV is not given, generate a random IV
-        unsigned char *entropy = malloc(32);
-        setSeed(entropy, 32);
         IV = malloc(16);
         randBytes(IV, 16);
-        free(entropy);
     }
 
     // Write IV to output buffer
@@ -181,8 +178,32 @@ size_t ske_decrypt(unsigned char *outBuf, unsigned char *inBuf, size_t len, SKE_
  * @return This function returns the number of bytes written to the output file.
  */
 size_t ske_encrypt_file(const char *fnout, const char *fnin, SKE_KEY *K, unsigned char *IV, size_t offset_out) {
-    /* TODO: write this.  Hint: mmap. */
-    return 0;
+    // Open the input file
+    int fdin = open(fnin, O_RDONLY);
+    struct stat st;
+    fstat(fdin, &st);
+
+    // Map the input file into memory
+    unsigned char *inBuf = mmap(NULL, st.st_size, PROT_READ, MMAP_SEQ, fdin, 0);
+
+    size_t outLen = ske_getOutputLen(st.st_size);    // Calculate the output length
+    unsigned char *outBuf = malloc(outLen);    // Allocate memory for the output buffer
+
+    // Encrypt the input buffer and write the result to the output buffer
+    size_t bytesWritten = ske_encrypt(outBuf, inBuf, st.st_size, K, IV);
+
+    int fdout = open(fnout, O_RDWR | O_CREAT, 0666);    // Open the output file
+    lseek(fdout, offset_out, SEEK_SET);    // Set the file offset for the output file
+    write(fdout, outBuf, bytesWritten);    // Write the output buffer to the output file
+
+
+    munmap(inBuf, st.st_size); // Unmap the input buffer and close the files
+    close(fdin);
+    close(fdout);
+    free(outBuf);  // Free the output buffer
+
+
+    return bytesWritten;
 }
 
 /**
@@ -200,6 +221,33 @@ size_t ske_encrypt_file(const char *fnout, const char *fnin, SKE_KEY *K, unsigne
  * @return This function returns the number of bytes written to the output file.
  */
 size_t ske_decrypt_file(const char *fnout, const char *fnin, SKE_KEY *K, size_t offset_in) {
-    /* TODO: write this. */
-    return 0;
+    int fdin = open(fnin, O_RDONLY);    // Open the input file
+    lseek(fdin, offset_in, SEEK_SET);    // Set the file offset for the input file
+    struct stat st;
+    fstat(fdin, &st);
+
+    // Map the input file into memory
+    unsigned char *inBuf = mmap(NULL, st.st_size - offset_in, PROT_READ, MMAP_SEQ, fdin, offset_in);
+
+    size_t outLen = st.st_size - offset_in - AES_BLOCK_SIZE - HM_LEN;    // Calculate the output length
+    unsigned char *outBuf = malloc(outLen);    // Allocate memory for the output buffer
+
+    // Decrypt the input buffer and write the result to the output buffer
+    size_t bytesRead = ske_decrypt(outBuf, inBuf, st.st_size - offset_in, K);
+    if (bytesRead == -1) {        // If decryption failed, clean up and return -1
+        free(outBuf);
+        munmap(inBuf, st.st_size - offset_in);
+        close(fdin);
+        return -1;
+    }
+
+    int fdout = open(fnout, O_RDWR | O_CREAT, 0666);    // Open the output file
+    write(fdout, outBuf, bytesRead);    // Write the output buffer to the output file
+
+    munmap(inBuf, st.st_size - offset_in);    // Unmap the input buffer and close the files
+    close(fdin);
+    close(fdout);
+    free(outBuf);    // Free the output buffer
+
+    return bytesRead;
 }
