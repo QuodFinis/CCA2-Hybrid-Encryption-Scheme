@@ -1,6 +1,6 @@
 /* kem-enc.c
- * simple encryption utility providing CCA2 security.
- * based on the KEM/DEM hybrid model. */
+ * A simple encryption utility providing CCA2 security.
+ * It is based on the KEM/DEM hybrid model. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +14,7 @@
 #include "rsa.h"
 #include "prf.h"
 
+// Usage message for the command-line interface
 static const char *usage =
         "Usage: %s [OPTIONS]...\n"
         "Encrypt or decrypt data.\n\n"
@@ -31,6 +32,7 @@ static const char *usage =
 
 #define FNLEN 255
 
+// Enum for the modes of operation: encryption, decryption, and key generation
 enum modes {
     ENC,
     DEC,
@@ -53,44 +55,51 @@ enum modes {
 
 #define HASHLEN 32 /* for sha256 */
 
+
+/**
+ * @brief Encrypt a file using the RSA-KEM/DEM hybrid model.
+ * @param fnOut Path to the output file.
+ * @param fnIn path to the input file.
+ * @param K public key.
+ *
+ * This function encrypts the file `fnIn` using the RSA-KEM/DEM hybrid model. It generates a random symmetric key,
+ * encrypts it using the public key `K`, and then uses the symmetric key to encrypt the file. The encrypted file is
+ * written to `fnOut`.
+ *
+ * The RSA-KEM/DEM hybrid model is a combination of Key Encapsulation Mechanism (KEM) and Data Encapsulation Mechanism (DEM).
+ * In this model, the symmetric key is randomly generated and encrypted using RSA (KEM part). This encrypted symmetric key
+ * is then concatenated with the hash of the symmetric key. The actual data is encrypted using the symmetric key (DEM part).
+ *
+ * @return This function returns 0 on success and non-zero on failure.
+ */
 int kem_encrypt(const char *fnOut, const char *fnIn, RSA_KEY *K) {
-    // generate ephemeral key
-    size_t keyLen = rsa_numBytesN(K);
+    size_t keyLen = rsa_numBytesN(K);    // Generate ephemeral key
     unsigned char *ephemKey = malloc(keyLen);
 
-    // generate random key
-    randBytes(ephemKey, keyLen);
+    randBytes(ephemKey, keyLen);    // Generate random key
     SKE_KEY SK;
     ske_keyGen(&SK, ephemKey, keyLen);
 
-    // encrypt ephemeral key
-    size_t len = rsa_numBytesN(K);
+    size_t len = rsa_numBytesN(K);    // Encrypt ephemeral key
     unsigned char *x = malloc(len);
 
     randBytes(x, len);
     ske_keyGen(&SK, x, len);
 
-    // encapsulate
-    size_t encapLen = len + HASHLEN;
+    size_t encapLen = len + HASHLEN;    // Encapsulate
     unsigned char *encap = malloc(encapLen);
 
-    // encrypt
-    rsa_encrypt(encap, x, len, K);
+    rsa_encrypt(encap, x, len, K);    // Encrypt
 
-    // hash
-    unsigned char *h = malloc(HASHLEN);
+    unsigned char *h = malloc(HASHLEN);    // Hash
     SHA256(x, len, h);
+    memcpy(encap + len, h, HASHLEN);    // Append hash
 
-    // append hash
-    memcpy(encap + len, h, HASHLEN);
-
-    // write to file
-    int fdout = open(fnOut, O_CREAT | O_RDWR, S_IRWXU);
+    int fdout = open(fnOut, O_CREAT | O_RDWR, S_IRWXU);    // Write to file
     write(fdout, encap, encapLen);
     close(fdout);
 
-    // encrypt file
-    ske_encrypt_file(fnOut, fnIn, &SK, NULL, encapLen);
+    ske_encrypt_file(fnOut, fnIn, &SK, NULL, encapLen);    // Encrypt file
 
     free(x);
     free(encap);
@@ -98,47 +107,50 @@ int kem_encrypt(const char *fnOut, const char *fnIn, RSA_KEY *K) {
     return 0;
 }
 
+/**
+ * @brief Decrypt a file using the RSA-KEM/DEM hybrid model.
+ * @param fnOut Path to the output file.
+ * @param fnIn path to the input file.
+ * @param K private key.
+ *
+ * This function decrypts the file `fnIn` using the RSA-KEM/DEM hybrid model. It reads the encrypted symmetric key from
+ * the file, decrypts it using the private key `K`, and then uses the symmetric key to decrypt the file. The decrypted file
+ * is written to `fnOut`.
+ *
+ * The RSA-KEM/DEM hybrid model is a combination of Key Encapsulation Mechanism (KEM) and Data Encapsulation Mechanism (DEM).
+ * In this model, the symmetric key is read from the file and decrypted using RSA (KEM part). The actual data is decrypted
+ * using the symmetric key (DEM part).
+ *
+ * @return This function returns 0 on success and non-zero on failure.
+ */
 int kem_decrypt(const char *fnOut, const char *fnIn, RSA_KEY *K) {
-    // generate ephemeral key
-    size_t keyLen = rsa_numBytesN(K);
+    size_t keyLen = rsa_numBytesN(K);    // Generate ephemeral key
     unsigned char *ephemKey = malloc(keyLen);
 
-    // generate random key
-    int fdin = open(fnIn, O_RDONLY);
+    int fdin = open(fnIn, O_RDONLY);    // Generate random key
 
-    // read encapsulated key
-    size_t encapLen = lseek(fdin, 0, SEEK_END);
+    size_t encapLen = lseek(fdin, 0, SEEK_END);    // Read encapsulated key
     lseek(fdin, 0, SEEK_SET);
 
-    // read encapsulated key
-    unsigned char *encap = malloc(encapLen);
+    unsigned char *encap = malloc(encapLen);    // Read encapsulated key
     read(fdin, encap, encapLen);
     close(fdin);
 
-    // decrypt
-    size_t len = rsa_numBytesN(K);
+    size_t len = rsa_numBytesN(K);    // Decrypt
 
-    // check if the file is too short
-    unsigned char *x = malloc(len);
+    unsigned char *x = malloc(len);    // Check if the file is too short
     memcpy(x, encap, len);
 
-    // hash
-    unsigned char *h = malloc(HASHLEN);
+    unsigned char *h = malloc(HASHLEN);    // Hash
     memcpy(h, encap + len, HASHLEN);
-
-    // check hash
-    unsigned char *h2 = malloc(HASHLEN);
+    unsigned char *h2 = malloc(HASHLEN);    // Check hash
     SHA256(x, len, h2);
+    rsa_decrypt(x, x, len, K);    // Check if the hash is correct
 
-    // check if the hash is correct
-    rsa_decrypt(x, x, len, K);
-
-    // generate key
-    SKE_KEY SK;
+    SKE_KEY SK;    // Generate key
     ske_keyGen(&SK, x, len);
 
-    // decrypt file
-    ske_decrypt_file(fnOut, fnIn, &SK, encapLen);
+    ske_decrypt_file(fnOut, fnIn, &SK, encapLen);    // Decrypt file
 
     free(x);
     free(h);
@@ -148,57 +160,96 @@ int kem_decrypt(const char *fnOut, const char *fnIn, RSA_KEY *K) {
     return 0;
 }
 
+/**
+ * @brief Encrypt a file using a given key.
+ * @param fnOut Path to the output file.
+ * @param fnIn Path to the input file.
+ * @param fnKey Path to the key file.
+ * @return int This function returns 0 on success and non-zero on failure.
+ *
+ * This function encrypts the file `fnIn` using the key stored in `fnKey`. The encrypted file is written to `fnOut`.
+ */
 int encrypt(char *fnOut, char *fnIn, char *fnKey) {
-    FILE *keyFile = fopen(fnKey, "r");
+    FILE *keyFile = fopen(fnKey, "r");    // Open the key file
     printf("Key file: %s\n", fnKey);
-    if (keyFile == NULL) {
+
+    if (keyFile == NULL) {    // Check if the key file exists
         printf("Key file does not exist\n");
         return -1;
     }
 
-    RSA_KEY K;
+    RSA_KEY K;    // Read the public key from the key file
     rsa_readPublic(keyFile, &K);
-    kem_encrypt(fnOut, fnIn, &K);
-    rsa_shredKey(&K);
-    fclose(keyFile);
+
+    kem_encrypt(fnOut, fnIn, &K);    // Encrypt the input file and write the result to the output file
+
+    rsa_shredKey(&K);    // Shred the key for security
+
+    fclose(keyFile);    // Close the key file
+
     return 0;
 }
 
+/**
+ * @brief Generate a new RSA key pair.
+ * @param fnOut Path to the output file for the private key.
+ * @param nBits The number of bits for the new key.
+ * @return int This function returns 0 on success and non-zero on failure.
+ *
+ * This function generates a new RSA key pair with `nBits` bits. The private key is written to `fnOut` and the public key is written to `fnOut.pub`.
+ */
 int generate(char *fnOut, size_t nBits) {
-    RSA_KEY K;
+    RSA_KEY K;    // Initialize the RSA key structure
 
-    //create new file with .pub extension
-    char *fPub = malloc(strlen(fnOut) + 5);
+    char *fPub = malloc(strlen(fnOut) + 5);    // Create a new file name with .pub extension for the public key
     strcpy(fPub, fnOut);
     strcat(fPub, ".pub");
 
-    FILE *outPrivate = fopen(fnOut, "w");
+    FILE *outPrivate = fopen(fnOut, "w");    // Open the output files for the private and public keys
     FILE *outPublic = fopen(fPub, "w");
 
-    rsa_keyGen(nBits, &K);
-    rsa_writePrivate(outPrivate, &K);
+    rsa_keyGen(nBits, &K);    // Generate the RSA key pair
+
+    rsa_writePrivate(outPrivate, &K);    // Write the private and public keys to their respective files
     rsa_writePublic(outPublic, &K);
 
-    fclose(outPrivate);
+    fclose(outPrivate);    // Close the output files
     fclose(outPublic);
-    rsa_shredKey(&K);
-    free(fPub);
+
+    rsa_shredKey(&K);    // Shred the key for security
+
+    free(fPub);    // Free the memory allocated for the public key file name
+
     return 0;
 }
 
+/**
+ * @brief Decrypt a file using a given key.
+ * @param fnOut Path to the output file.
+ * @param fnIn Path to the input file.
+ * @param fnKey Path to the key file.
+ * @return int This function returns 0 on success and non-zero on failure.
+ *
+ * This function decrypts the file `fnIn` using the key stored in `fnKey`. The decrypted file is written to `fnOut`.
+ */
 int decrypt(char *fnOut, char *fnIn, char *fnKey) {
-    FILE *privateKey = fopen(fnKey, "r");
+    FILE *privateKey = fopen(fnKey, "r");    // Open the key file
     printf("Key file: %s\n", fnKey);
-    if (privateKey == NULL) {
+
+    if (privateKey == NULL) {    // Check if the key file exists
         printf("Key file does not exist\n");
         return -1;
     }
 
-    RSA_KEY K;
+    RSA_KEY K;    // Read the private key from the key file
     rsa_readPrivate(privateKey, &K);
-    fclose(privateKey);
-    kem_decrypt(fnOut, fnIn, &K);
-    rsa_shredKey(&K);
+
+    fclose(privateKey);    // Close the key file
+
+    kem_decrypt(fnOut, fnIn, &K); // Decrypt the input file and write the result to the output file
+
+    rsa_shredKey(&K);    // Shred the key for security
+
     return 0;
 }
 
@@ -266,9 +317,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* TODO: finish this off.  Be sure to erase sensitive data
-     * like private keys when you're done with them (see the
-     * rsa_shredKey function). */
     switch (mode) {
         case ENC:
             encrypt(fnOut, fnIn, fnKey);
